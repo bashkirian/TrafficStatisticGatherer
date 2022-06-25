@@ -10,7 +10,7 @@
 
 #define SERVER_QUEUE_NAME   "/server"
 #define QUEUE_PERMISSIONS 0660
-#define MAX_MSG_SIZE 65436
+#define MAX_MSG_SIZE sizeof(unsigned long)
 #define MSG_BUFFER_SIZE MAX_MSG_SIZE + 1
 
 struct PacketInfo {

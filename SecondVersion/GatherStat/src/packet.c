@@ -26,24 +26,11 @@ int isNumber(char *str) {
    return 1;
 }
 
-int isIpAdress(char *ip) {
+uint32_t ipAdressFromString(char *ip) {
   struct sockaddr_in sa;
-  int result = inet_pton(AF_INET, ip, &(sa.sin_addr));
-  return result != 0;
-}
-
-// compare 2 ip adresses for equality
-bool compareIps(char *ip_lhs, char *ip_rhs) {
-   char *ptr1, *ptr2;
-   ptr1 = strtok(ip_lhs, ".");
-   ptr2 = strtok(ip_rhs, ".");
-   while(ptr1 != NULL) {
-     if (atoi(ptr1) != atoi(ptr2))
-       return 0;
-     ptr1 = strtok(ip_lhs, ".");
-     ptr2 = strtok(ip_rhs, ".");
-   }
-   return 1;
+  if(inet_pton(AF_INET, ip, &(sa.sin_addr)))
+     return sa.sin_addr.s_addr;
+  else return 0;
 }
 
 // check if socket is created successfully
@@ -51,7 +38,7 @@ void checkSocket(int socket) {
   if (socket < 0) {
     perror("Socket creation error");
     printf("Error code: %d\n", errno);
-    exit(EXIT_FAILURE);
+    _exit(EXIT_FAILURE);
   }
 }
 
@@ -69,8 +56,8 @@ bool isValidPacket(unsigned char *buffer, ssize_t size, struct Parameters *param
 
   printf("Packet acquired \n");
 
-  return (compareIps(params->ip_sender, inet_ntoa(source->sin_addr)) &&
-          compareIps(params->ip_receiver, inet_ntoa(destination->sin_addr)) &&
+  return (params->ip_sender == source->sin_addr.s_addr &&
+          params->ip_receiver == destination->sin_addr.s_addr &&
           params->port_sender == ntohs(udp_header->source) &&
           params->port_receiver == ntohs(udp_header->dest));
 }

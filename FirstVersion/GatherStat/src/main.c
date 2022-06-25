@@ -132,7 +132,6 @@ void* processPackets(void *arg) {
         struct iphdr *ip_header = (struct iphdr *)(buffer + sizeof(struct ethhdr));
         if (ip_header->protocol == 17) {
             if (isValidPacket(buffer, packet_bytes, &params)) {
-                printf("ok packet\n");
                 pthread_mutex_lock(&thread_mutex);
                 packet_info.bytes_amount += packet_bytes;
                 ++packet_info.packet_amount;
@@ -146,12 +145,14 @@ int main(int argc, char *argv[])
 {
   struct Parameters params;
   if (argc == 6) {
-      if (!(isIpAdress(argv[1]))) {
+      uint32_t ip_sender = ipAdressFromString(argv[1]);
+      if (ip_sender == 0) {
         perror("Please write the valid sender ip");
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
       }
-      if (!(isIpAdress(argv[2]))) {
+      uint32_t ip_receiver = ipAdressFromString(argv[2]);
+      if (ip_receiver == 0) {
         perror("Please write the valid receiver ip");
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
@@ -176,8 +177,8 @@ int main(int argc, char *argv[])
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
       }
-      params.ip_sender = argv[1];
-      params.ip_receiver = argv[2];
+      params.ip_sender = ip_sender;
+      params.ip_receiver = ip_receiver;
       params.port_sender = atoi(argv[3]);
       params.port_receiver = atoi(argv[4]);
       params.interface_name = argv[5];

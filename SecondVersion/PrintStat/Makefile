@@ -4,7 +4,7 @@ default : all
 
 all: PrintStat
 
-client: PrintStat.c
+PrintStat: PrintStat.c
 	$(CC) $(CFLAGS) -o PrintStat PrintStat.c -lrt
 
 clean:

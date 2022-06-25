@@ -33,55 +33,76 @@ int raw_socket;
 extern struct sockaddr_in *source;
 extern struct sockaddr_in *destination;
 
-pthread_mutex_t thread_mutex;
+struct Bytes { 
+  int bytes_by_packets[1000];
+  int packets_read;
+  struct PacketInfo packet_info;
+};
 
-struct PacketInfo packet_info;
+struct Bytes bytes;
+pthread_mutex_t thread_mutex;
 
 void handleSignal(int sig);
 
-// receives packet statistics from below function, sums it then sends to another program
+void sumStatistic() {
+  pthread_mutex_lock(&thread_mutex);
+  for (int i = bytes.packet_info.packet_amount; i < bytes.packets_read; ++i) {
+    bytes.packet_info.packet_amount++;
+    bytes.packet_info.bytes_amount += bytes.bytes_by_packets[i];
+  }
+  pthread_mutex_unlock(&thread_mutex);
+}
+
+// receives packet statistics from below function, then sends to another program
 void receiveAndSendPacketsInfo() {
-    while (true) {
-        mqd_t qd_server, qd_client;
-        struct mq_attr attr;
+  while (true) {
+    mqd_t qd_server, qd_client;
+    struct mq_attr attr;
 
-        attr.mq_flags = 0;
-        attr.mq_maxmsg = MAX_MESSAGES;
-        attr.mq_msgsize = MAX_MSG_SIZE;
-        attr.mq_curmsgs = 0;
-        
-        if ((qd_server = mq_open (SERVER_QUEUE_NAME, O_RDONLY | O_CREAT, QUEUE_PERMISSIONS, &attr)) == -1) {
-          perror ("Server: mq_open (server)");
-        }
+    attr.mq_flags = 0;
+    attr.mq_maxmsg = MAX_MESSAGES;
+    attr.mq_msgsize = MAX_MSG_SIZE;
+    attr.mq_curmsgs = 0;
 
-        char in_buffer [MSG_BUFFER_SIZE];
-
-        if (mq_receive(qd_server, in_buffer, MSG_BUFFER_SIZE, NULL) == -1) {
-          perror ("Server: mq_receive");
-        }
-
-        if ((qd_client = mq_open (in_buffer, O_WRONLY)) == 1) {
-          perror ("Server: Not able to open client queue");
-        }
-
-        if (mq_send(qd_client, (char *) &packet_info, sizeof(packet_info), 1) == -1) {
-          perror ("Server: Not able to send message to client");
-        }
-
-        if (mq_close(qd_server) == -1) {
-          perror ("Server: mq_close");
-        }
-
-        if (mq_unlink(SERVER_QUEUE_NAME) == -1) {
-          perror ("Server: mq_unlink");
-        }
+    if ((qd_server = mq_open (SERVER_QUEUE_NAME, O_RDONLY | O_CREAT, QUEUE_PERMISSIONS, &attr)) == -1) {
+      perror ("Server: mq_open (server)");
+      _exit(1);
     }
+
+    char in_buffer [MSG_BUFFER_SIZE];
+
+    if (mq_receive(qd_server, in_buffer, MSG_BUFFER_SIZE, NULL) == -1) {
+      perror("Server: mq_receive");
+      _exit(1);
+    }
+
+    if ((qd_client = mq_open (in_buffer, O_WRONLY)) == 1) {
+      perror("Server: Not able to open client queue");
+      _exit(1);
+    }
+    
+    sumStatistic();
+    
+    if (mq_send(qd_client, (char *) &bytes.packet_info, sizeof(bytes.packet_info), 1) == -1) {
+      perror ("Server: Not able to send message to client");
+    }
+
+    if (mq_close(qd_server) == -1) {
+      perror("Server: mq_close");
+      _exit(1);
+    }
+
+    if (mq_unlink(SERVER_QUEUE_NAME) == -1) {
+      perror("Server: mq_unlink");
+      _exit(1);
+    }
+  }
 }
 
 // reads statistics from packets that meet parameters
 void* processPackets(void *arg) {
     struct Parameters params = *(struct Parameters *)arg;
-    ssize_t bytes_read;
+    ssize_t packet_bytes;
     unsigned char buffer[BUFFER_SIZE];
     struct sockaddr_ll sll;
     struct ifreq ifr;
@@ -112,25 +133,26 @@ void* processPackets(void *arg) {
     }
 
     signal(SIGINT, handleSignal);
-
-    packet_info.bytes_amount = 0;
-    packet_info.packet_amount = 0;
-
+    
+    bytes.packets_read = 0;
+    bytes.packet_info.bytes_amount = 0;
+    bytes.packet_info.packet_amount = 0;
+    
     while (true) {
-        memset(buffer, 0, sizeof(buffer));
-        bytes_read = recvfrom(raw_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&sll, &addr_size);
-        if (bytes_read < 0) {
-            perror("Error receiving data");
-            printf("Error code: %d\n", errno);
-            _exit(EXIT_FAILURE);
-        }
-        struct iphdr *ip_header = (struct iphdr *)(buffer + sizeof(struct ethhdr));
-        if (ip_header->protocol == 17) {
-            if (isValidPacket(buffer, bytes_read, &params)) {
-                packet_info.bytes_amount += bytes_read;
-                ++packet_info.packet_amount;
-            }
-        }
+      memset(buffer, 0, sizeof(buffer));
+      packet_bytes = recvfrom(raw_socket, buffer, sizeof(buffer), 0, (struct sockaddr *)&sll, &addr_size);
+      if (packet_bytes < 0) {
+        perror("Error receiving data");
+        printf("Error code: %d\n", errno);
+        _exit(EXIT_FAILURE);
+      }
+      struct iphdr *ip_header = (struct iphdr *)(buffer + sizeof(struct ethhdr));
+      if (ip_header->protocol == 17) {
+          if (isValidPacket(buffer, packet_bytes, &params)) {
+            bytes.bytes_by_packets[bytes.packets_read] = packet_bytes;
+            ++bytes.packets_read;
+          }
+      }
     }
 }
 
@@ -138,12 +160,14 @@ int main(int argc, char *argv[])
 {
   struct Parameters params;
   if (argc == 6) {
-      if (!(isIpAdress(argv[1]))) {
+    uint32_t ip_sender = ipAdressFromString(argv[1]);
+      if (ip_sender == 0) {
         perror("Please write the valid sender ip");
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
       }
-      if (!(isIpAdress(argv[2]))) {
+    uint32_t ip_receiver = ipAdressFromString(argv[2]);
+      if (ip_receiver == 0) {
         perror("Please write the valid receiver ip");
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
@@ -168,16 +192,16 @@ int main(int argc, char *argv[])
         printf("Error code: %d\n", errno);
         exit(EXIT_FAILURE);
       }
-      params.ip_sender = argv[1];
-      params.ip_receiver = argv[2];
+      params.ip_sender = ip_sender;
+      params.ip_receiver = ip_receiver;
       params.port_sender = atoi(argv[3]);
       params.port_receiver = atoi(argv[4]);
       params.interface_name = argv[5];
   }
   else {
-      perror("Error in parameters number: please write 2 ip adresses and 2 ports for sender and receiver, interface name");
-      printf("Error code: %d\n", errno);
-      exit(EXIT_FAILURE);
+    perror("Error in parameters number: please write 2 ip adresses and 2 ports for sender and receiver, interface name");
+    printf("Error code: %d\n", errno);
+    exit(EXIT_FAILURE);
   }
   pthread_t packet_processor_thread;
   pthread_create(&packet_processor_thread, NULL, &processPackets, &params);
@@ -191,11 +215,11 @@ void handleSignal(int sig)
   free(source);
   free(destination);
   if (close(raw_socket) == 0) {
-      _exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
   }
   else {
-      perror("An error occurred while closing the socket: ");
-      printf("Error code: %d\n", errno);
-      _exit(EXIT_FAILURE);
+    perror("An error occurred while closing the socket: ");
+    printf("Error code: %d\n", errno);
+    exit(EXIT_FAILURE);
   }
 }
