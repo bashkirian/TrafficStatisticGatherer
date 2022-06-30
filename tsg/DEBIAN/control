@@ -1,0 +1,12 @@
+Package: TrafficStatisticGatherer
+Version: 2022.06.29-1
+Maintainer: Shagiev Almaz <elmuzon@gmail.com>
+Architecture: amd64
+Section: misc
+Description: Program for gathering info about UDP packets.
+ TrafficStatGatherer is created for gathering statistic about . 
+ UDP packets. GatherStat does the gathering, and PrintStat .
+ prints number of overall bytes and number of incoming packets.
+Depends: libc6
+Build-Depends: make
+Origin: https://github.com/bashkirian/TrafficStatisticGatherer

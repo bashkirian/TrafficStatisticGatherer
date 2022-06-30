@@ -9,7 +9,7 @@ OBJ_DIR=obj
 SRC_FILES=$(wildcard $(SRC_DIR)/*.c)
 OBJ_FILES=$(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRC_FILES))
 
-BIN_FILE=StatGatherer
+BIN_FILE=GatherStat
 
 all: $(OBJ_DIR) $(BIN_FILE)
 
